@@ -4,6 +4,11 @@ interface MemoizeArgs {
 	tags?: string[];
 }
 
+interface CacheValue {
+	resultsMap: Map<any,any>;
+	tagVersions?: Record<string, symbol>;
+}
+
 export function Memoize(args?: MemoizeArgs | MemoizeArgs['hashFunction']) {
 	let hashFunction: MemoizeArgs['hashFunction'];
 	let duration: MemoizeArgs['expiring'];
@@ -35,26 +40,29 @@ export function MemoizeExpiring(expiring: number, hashFunction?: MemoizeArgs['ha
 	});
 }
 
-const clearCacheTagsMap: Map<string, Map<any, any>[]> = new Map();
+const latestTagVersions: Map<string, symbol> = new Map();
 
-export function clear (tags: string[]): number {
-	const cleared: Set<Map<any, any>> = new Set();
+export function clear (tags: string[]): void {
 	for (const tag of tags) {
-		const maps = clearCacheTagsMap.get(tag);
-		if (maps) {
-			for (const mp of maps) {
-				if (!cleared.has(mp)) {
-					mp.clear();
-					cleared.add(mp);
-				}
-			}
+		if (latestTagVersions.has(tag)) {
+			latestTagVersions.set(tag, Symbol());
 		}
 	}
-	return cleared.size;
+}
+
+function getLatestTagVersionsForTags (tags: string[]) {
+	return tags.reduce<Record<string, symbol>>((acc, tag) => {
+		if (!latestTagVersions.has(tag)) {
+			const symbolForTag = Symbol();
+			latestTagVersions.set(tag, symbolForTag);
+			return Object.assign(acc, { [tag]: symbolForTag });
+		}
+		return Object.assign(acc, { [tag]: latestTagVersions.get(tag) });
+	}, {});
 }
 
 function getNewFunction(originalMethod: () => void, hashFunction?: MemoizeArgs['hashFunction'], duration: number = 0, tags?: MemoizeArgs['tags']) {
-	const propMapName = Symbol(`__memoized_map__`);
+	const propMapName = Symbol(`__cache__`);
 
 	// The function returned here gets called instead of originalMethod.
 	return function (...args: any[]) {
@@ -62,23 +70,29 @@ function getNewFunction(originalMethod: () => void, hashFunction?: MemoizeArgs['
 
 		// Get or create map
 		if (!this.hasOwnProperty(propMapName)) {
+			const value: CacheValue = { resultsMap: new Map<any, any>() };
+			if (Array.isArray(tags)) {
+				value.tagVersions = getLatestTagVersionsForTags(tags);
+			}
 			Object.defineProperty(this, propMapName, {
 				configurable: false,
 				enumerable: false,
 				writable: false,
-				value: new Map<any, any>()
+				value,
 			});
 		}
-		let myMap: Map<any, any> = this[propMapName];
+
+		const cache = this[propMapName] as CacheValue;
+		let myMap: Map<any, any> = cache.resultsMap;
 
 		if (Array.isArray(tags)) {
-			for (const tag of tags) {
-				if (clearCacheTagsMap.has(tag)) {
-					clearCacheTagsMap.get(tag).push(myMap);
-				} else {
-					clearCacheTagsMap.set(tag, [myMap]);
-				}
+			const tagVersions = this[propMapName].tagVersions;
+			const isAtLeastOneTagStale = tags.some((tag) => tagVersions[tag] !== latestTagVersions.get(tag));
+			if (isAtLeastOneTagStale) {
+				myMap.clear();
+				cache.tagVersions = getLatestTagVersionsForTags(tags);
 			}
+
 		}
 
 		if (hashFunction || args.length > 0 || duration > 0) {

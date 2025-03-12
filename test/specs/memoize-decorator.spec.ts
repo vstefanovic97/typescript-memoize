@@ -252,9 +252,10 @@ describe('Memoize()', () => {
 			let val3 = a.getGreeting4('Hello', 'World');
 			clear(["foo"]);
 			let val4 = a.getGreeting4('Hello', 'Moon');
-			let val5 = a.getGreeting4('Hello', 'World');
-			clear(["bar"]);
+			let val5 = a.getGreeting4('Hello', 'Moon');
 			let val6 = a.getGreeting4('Hello', 'World');
+			clear(["bar"]);
+			let val7 = a.getGreeting4('Hello', 'World');
 
 			clear(["unknown"]);
 
@@ -262,8 +263,9 @@ describe('Memoize()', () => {
 			expect(val2).toEqual('Hello, Moon');
 			expect(val3).toEqual('Hello, World');
 			expect(val4).toEqual('Hello, Moon');
-			expect(val5).toEqual('Hello, World');
+			expect(val5).toEqual('Hello, Moon');
 			expect(val6).toEqual('Hello, World');
+			expect(val7).toEqual('Hello, World');
 
 			expect(getGreetingSpy).toHaveBeenCalledTimes(5);
 		});
